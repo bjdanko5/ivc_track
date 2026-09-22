@@ -1,0 +1,11 @@
+# Прямые зависимости (подтверждено анализом импортов)
+streamlit
+requests
+python-dotenv
+psutil
+mistralai
+var_dump
+zeep
+yookassa
+debugpy
+pip-tools
