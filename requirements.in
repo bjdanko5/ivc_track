@@ -1,5 +1,5 @@
 # Прямые зависимости (подтверждено анализом импортов)
-streamlit
+streamlit==1.40.1
 requests
 python-dotenv
 psutil

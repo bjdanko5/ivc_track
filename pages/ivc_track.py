@@ -1,9 +1,10 @@
+from typing import Optional, Any, Dict
 import streamlit as st
 from datetime import datetime
 import time
 
-spinner_container = None
-global_config = None
+spinner_container: Optional[Any] = None
+global_config: Dict[str, Any] = {}
 
 def Настройки():
     st.set_page_config(
@@ -57,7 +58,7 @@ def get_soap_service():
     #schedule.run_pending()
     try:
         session = Session()
-        session.encoding = global_config["encoding"]
+        #session.encoding = global_config["encoding"]
 
         username = global_config["username"]
         password = global_config["password"]
@@ -65,7 +66,7 @@ def get_soap_service():
         url      = global_config["url"]
 
         session.auth = HTTPBasicAuth(username.encode(encoding), password.encode(encoding))
-        settings = Settings(strict=True)
+        settings = Settings(strict=True) # type: ignore
 
 #        cache = SqliteCache(path='wsdl_cache.db')
         cache = InMemoryCache(timeout = 60)
@@ -157,12 +158,13 @@ def ВывестиОтчет(trackID):
 
 def onChangetrackID():
     global spinner_container 
-    trackID = st.session_state.onChangeTrackID 
-    with spinner_container:
-        st.markdown("")
-        st.markdown("") 
-        with st.spinner('Запрос выполняется...'): 
-            Отследить(trackID)    
+    trackID = st.session_state.onChangeTrackID
+    if spinner_container is not None: 
+        with spinner_container:
+            st.markdown("")
+            st.markdown("") 
+            with st.spinner('Запрос выполняется...'): 
+                Отследить(trackID)    
 
 def ПоискПоНомеруОтправления():
     global spinner_container 
@@ -379,8 +381,11 @@ else:
             ],
         safe_prompt = True  
         )
-        st.session_state.answer = chat_response.choices[0].message.content
-
+        if chat_response and chat_response.choices:
+            st.session_state.answer = chat_response.choices[0].message.content
+        else:
+            st.session_state.answer = ""
+            #st.error("Пустой ответ от Mistral AI")
     question = st.chat_input("Задайте вопрос о сервисе или его разработчике",key="question",on_submit=ask_ai)
     if question:
         if st.session_state.get("answer",False): 
