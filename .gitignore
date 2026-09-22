@@ -16,3 +16,10 @@ requirements_backup_*.txt
 .idea/
 .DS_Store
 Thumbs.db
+
+# Windows metadata
+*:Zone.Identifier
+
+# Runtime state files
+update_payments_done.txt
+*_done.txt
