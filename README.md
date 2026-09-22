@@ -2,9 +2,10 @@
 
 Streamlit-приложение для отслеживания квитанций через SOAP-сервис и интеграции с ЮKassa.
 
-[![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
-[![Streamlit](https://img.shields.io/badge/streamlit-1.40-red.svg)](https://streamlit.io/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](#лицензия)
+![Python](https://img.shields.io/badge/python-3.12-blue)
+![Streamlit](https://img.shields.io/badge/streamlit-1.40-red)
+![Last commit](https://img.shields.io/github/last-commit/bjdanko5/ivc_track)
+![Repo size](https://img.shields.io/github/repo-size/bjdanko5/ivc_track)
 
 ---
 
@@ -13,13 +14,15 @@ Streamlit-приложение для отслеживания квитанци�
 - [Возможности](#-возможности)
 - [Требования](#-требования)
 - [Установка](#-установка)
-- [Настройка](#-настройка)
-- [Запуск](#-запуск)
+- [Настройка](#️-настройка)
+- [Запуск](#️-запуск)
 - [Управление сервисом](#-управление-сервисом)
-- [Обновление зависимостей](#-обновление-зависимостей)
+- [Работа с зависимостями](#-работа-с-зависимостями)
 - [Разработка](#-разработка)
 - [Структура проекта](#-структура-проекта)
 - [Диагностика](#-диагностика)
+- [Контрибьютинг](#-контрибьютинг)
+- [Лицензия](#-лицензия)
 
 ---
 
@@ -226,7 +229,7 @@ cd /var/www/html/ivc_track
 
 ```bash
 # Перезапуск с проверкой готовности
-./restart_ivc_track.sh
+sudo /var/www/html/ivc_track/restart_ivc_track.sh
 ```
 
 Скрипт:
@@ -238,32 +241,47 @@ cd /var/www/html/ivc_track
 
 ---
 
-## 📦 Обновление зависимостей
+## 📦 Работа с зависимостями
 
-Управление через `pip-tools` и скрипт `update_deps.sh`.
+Проект использует **`pip-tools`** для управления зависимостями и скрипт **`update_deps.sh`** для автоматизации.
+
+### Как это устроено
+
+| Файл | Назначение | Редактируется |
+|---|---|---|
+| `requirements.in` | Прямые зависимости (что вы импортируете) | ✍️ вручную |
+| `requirements.txt` | Полный граф с точными версиями | 🤖 `pip-compile` |
+| `.deps_backup/` | Бэкапы перед каждым обновлением | 🤖 `update_deps.sh` |
+
+**Правило:** никогда не редактируйте `requirements.txt` вручную — он перегенерируется.
 
 ### Установка скрипта
 
+Если `update_deps.sh` ещё не установлен:
+
 ```bash
 sudo nano /usr/local/bin/update_deps.sh
-# (вставить содержимое)
+# (вставить содержимое скрипта)
 sudo chmod +x /usr/local/bin/update_deps.sh
+
+# Проверить
+bash -n /usr/local/bin/update_deps.sh && echo "syntax OK"
 ```
 
-### Команды
+### Основные команды
 
 ```bash
-# 1. Обновить ВСЕ пакеты
+# 1. Посмотреть, что устарело (без применения)
+sudo update_deps.sh --dry-run
+
+# 2. Обновить ВСЕ пакеты до последних совместимых версий
 sudo update_deps.sh
 
-# 2. Обновить только streamlit
+# 3. Обновить только один пакет
 sudo update_deps.sh streamlit
 
-# 3. Обновить несколько пакетов
+# 4. Обновить несколько пакетов
 sudo update_deps.sh streamlit yookassa zeep
-
-# 4. Посмотреть, что изменится (без применения)
-sudo update_deps.sh --dry-run
 
 # 5. Dry-run для конкретного пакета
 sudo update_deps.sh --dry-run streamlit
@@ -271,59 +289,249 @@ sudo update_deps.sh --dry-run streamlit
 
 ### Что делает скрипт
 
-1. Делает бэкап `pip freeze` в `.deps_backup/`
-2. Устанавливает `pip-tools`, если нет
-3. Запускает `pip-compile --upgrade` (или `--upgrade-package` для конкретных)
-4. Показывает **diff** — что изменилось в версиях
-5. Синхронизирует venv через `pip-sync`
-6. Восстанавливает `pip-tools`
-7. Проверяет 9 ключевых импортов
-8. Перезапускает сервис
-9. Проверяет HTTP-отклик приложения
+При запуске `update_deps.sh`:
 
-### Откат
+1. **Бэкап** — сохраняет `pip freeze` в `.deps_backup/requirements_frozen_YYYYMMDD-HHMMSS.txt`
+2. **Проверка** `pip-tools` — устанавливает, если нет
+3. **`pip-compile`** — генерирует новый `requirements.txt`:
+   - `--upgrade` — если пакеты не указаны (обновить всё)
+   - `--upgrade-package <pkg>` — если указаны конкретные
+4. **Показ diff** — что изменилось в версиях
+5. **`pip-sync`** — синхронизирует venv:
+   - удаляет пакеты, которых нет в `requirements.txt`
+   - доустанавливает/обновляет нужные
+6. **Восстановление** `pip-tools` (его удаляет `pip-sync`)
+7. **Проверка импортов** — 9 ключевых пакетов
+8. **Перезапуск** `ivc_track-debug.service`
+9. **Проверка** HTTP-отклика приложения
 
-```bash
-# Список бэкапов
-ls -la /var/www/html/ivc_track/.deps_backup/
+### Пример вывода
 
-# Откат
-/var/www/html/ivc_track/venv/bin/pip install \
-    -r /var/www/html/ivc_track/.deps_backup/requirements_frozen_YYYYMMDD-HHMMSS.txt \
-    --force-reinstall
+```
+📦 Обновление зависимостей ivc_track
+─────────────────────────────────────────
+▶ Бэкап текущего состояния
+✅ Бэкап: /var/www/html/ivc_track/.deps_backup/requirements_frozen_20260922-162141.txt
 
-sudo systemctl restart ivc_track-debug.service
+▶ Проверка pip-tools
+✅ pip-tools уже установлен
+
+▶ Генерация нового requirements.txt
+ℹ️  Обновление ВСЕХ пакетов
+✅ requirements.txt обновлён
+
+▶ Изменения в requirements.txt
+--- /tmp/requirements_old.txt
++++ /var/www/html/ivc_track/requirements.txt
+@@ -10,7 +10,7 @@
+-altair==5.4.1
++altair==5.5.0
+     # via streamlit
+ℹ️  Строк изменено: 61
+
+▶ Синхронизация venv (pip-sync)
+✅ pip-tools восстановлен
+✅ venv синхронизирован
+
+▶ Проверка ключевых импортов
+  OK   streamlit
+  OK   requests
+  OK   dotenv
+  OK   psutil
+  OK   mistralai
+  OK   var_dump
+  OK   zeep
+  OK   yookassa
+  OK   debugpy
+
+▶ Перезапуск сервиса
+✅ Сервис ivc_track-debug.service перезапущен
+
+▶ Проверка отклика приложения
+✅ Приложение отвечает: HTTP 200
+
+─────────────────────────────────────────
+🎉 Обновление завершено
 ```
 
-### Алиасы
+### Фиксация версий
+
+Чтобы **не обновлять** критичные пакеты (например, `streamlit`), зафиксируйте точную версию в `requirements.in`:
+
+```
+streamlit==1.40.1
+```
+
+Тогда `pip-compile --upgrade` **не будет** трогать этот пакет, даже если выйдет новая версия.
+
+**Пример `requirements.in` с фиксацией:**
+
+```
+# Зафиксирован — не обновлять
+streamlit==1.40.1
+
+# Свободные — обновлять
+requests
+python-dotenv
+psutil
+mistralai
+var_dump
+zeep
+yookassa
+debugpy
+pip-tools
+```
+
+Проверить, что `streamlit` не попал в diff:
 
 ```bash
-# ~/.bashrc
+sudo update_deps.sh --dry-run 2>&1 | grep -E "streamlit|altair" || echo "✅ streamlit и altair не в diff"
+```
+
+### Добавление новой зависимости
+
+1. Добавьте пакет в `requirements.in`:
+
+   ```bash
+   echo "pandas" >> requirements.in
+   ```
+
+2. Сгенерируйте `requirements.txt`:
+
+   ```bash
+   cd /var/www/html/ivc_track
+   source venv/bin/activate
+   pip-compile requirements.in
+   ```
+
+3. Синхронизируйте venv:
+
+   ```bash
+   pip-sync requirements.txt
+   pip install pip-tools   # восстановить
+   ```
+
+4. Или через скрипт:
+
+   ```bash
+   sudo update_deps.sh pandas
+   ```
+
+### Удаление зависимости
+
+1. Удалите пакет из `requirements.in`:
+
+   ```bash
+   sed -i '/^pandas$/d' requirements.in
+   ```
+
+2. Перегенерируйте `requirements.txt`:
+
+   ```bash
+   cd /var/www/html/ivc_track
+   source venv/bin/activate
+   pip-compile requirements.in
+   ```
+
+3. Синхронизируйте venv (удалит пакет):
+
+   ```bash
+   pip-sync requirements.txt
+   pip install pip-tools
+   ```
+
+### Откат обновления
+
+Если после обновления что-то сломалось:
+
+```bash
+# 1. Список бэкапов
+ls -la /var/www/html/ivc_track/.deps_backup/
+
+# 2. Откат
+cd /var/www/html/ivc_track
+source venv/bin/activate
+pip install -r .deps_backup/requirements_frozen_YYYYMMDD-HHMMSS.txt --force-reinstall
+
+# 3. Перезапуск
+sudo systemctl restart ivc_track-debug.service
+
+# 4. Проверка
+curl -sS --max-time 10 -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:8505/
+```
+
+### Ручное управление (без скрипта)
+
+Если `update_deps.sh` недоступен:
+
+```bash
+cd /var/www/html/ivc_track
+source venv/bin/activate
+
+# Бэкап
+pip freeze > .deps_backup/manual_$(date +%Y%m%d-%H%M%S).txt
+
+# Обновить всё
+pip-compile --upgrade requirements.in
+pip-sync requirements.txt
+pip install pip-tools
+
+# Обновить конкретный пакет
+pip-compile --upgrade-package streamlit requirements.in
+pip-sync requirements.txt
+pip install pip-tools
+```
+
+### Проверка актуальности
+
+Раз в неделю:
+
+```bash
+# Что устарело
+sudo update_deps.sh --dry-run
+
+# Если только патч-версии (1.2.3 → 1.2.4) — можно обновлять
+# Если мажорные (1.x → 2.x) — решать отдельно
+```
+
+### Алиасы для удобства
+
+Добавьте в `~/.bashrc`:
+
+```bash
 alias deps-update='sudo /usr/local/bin/update_deps.sh'
 alias deps-check='sudo /usr/local/bin/update_deps.sh --dry-run'
 alias deps-backup='ls -la /var/www/html/ivc_track/.deps_backup/'
+alias deps-list='cd /var/www/html/ivc_track && source venv/bin/activate && pip list'
+```
+
+Затем:
+
+```bash
+source ~/.bashrc
+
+deps-check              # что устарело
+deps-update             # обновить всё
+deps-update streamlit   # обновить streamlit
+deps-backup             # список бэкапов
+deps-list               # список установленных пакетов
+```
+
+### `.gitignore`
+
+Папка с бэкапами не должна попадать в репозиторий:
+
+```bash
+cd /var/www/html/ivc_track
+echo ".deps_backup/" >> .gitignore
+git add .gitignore
+git commit -m "Ignore .deps_backup"
+git push
 ```
 
 ---
 
 ## 💻 Разработка
-
-### Структура зависимостей
-
-Проект использует `pip-tools`:
-
-- **`requirements.in`** — прямые зависимости (пишете вручную)
-- **`requirements.txt`** — сгенерированный файл с точными версиями (`pip-compile`)
-
-```bash
-# После изменения requirements.in
-pip-compile requirements.in
-pip-sync requirements.txt
-pip install pip-tools  # восстановить
-
-# Или через скрипт
-sudo update_deps.sh --dry-run
-```
 
 ### Прямые зависимости
 
@@ -338,6 +546,7 @@ sudo update_deps.sh --dry-run
 | `zeep` | SOAP-клиент |
 | `yookassa` | Платёжная система |
 | `debugpy` | Удалённая отладка |
+| `pip-tools` | Управление зависимостями |
 
 ### Полезные команды
 
@@ -372,6 +581,9 @@ ivc_track/
 ├── .gitignore
 ├── .streamlit/
 │   └── config.toml
+├── .vscode/
+│   └── settings.json       # настройки Pylance
+├── .deps_backup/           # бэкапы зависимостей (не в git)
 ├── Manage_ivc_track.sh     # управление сервисом
 ├── restart_ivc_track.sh    # перезапуск с проверкой
 ├── common_soap.py          # общие SOAP-функции
