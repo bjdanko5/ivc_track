@@ -23,3 +23,7 @@ Thumbs.db
 # Runtime state files
 update_payments_done.txt
 *_done.txt
+
+*:Zone.Identifier
+update_payments_done.txt
+*_done.txt
